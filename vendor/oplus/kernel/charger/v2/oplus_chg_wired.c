@@ -635,6 +635,23 @@ static int oplus_wired_current_set(struct oplus_chg_wired *chip,
 	vote(chip->fcc_votable, SPEC_VOTER, true, fcc_ma, false);
 	vote(chip->icl_votable, SPEC_VOTER, true, icl_ma, true);
 	if (!chip->authenticate || !chip->hmac) {
+		rc = oplus_mms_get_item_data(chip->gauge_topic, GAUGE_ITEM_AUTH, &data, false);
+		if (rc < 0) {
+			chg_err("can't get GAUGE_ITEM_AUTH data, rc=%d\n",rc);
+			chip->authenticate = false;
+		} else {
+			chip->authenticate = !!data.intval;
+		}
+		rc = oplus_mms_get_item_data(chip->gauge_topic, GAUGE_ITEM_HMAC, &data, false);
+		if (rc < 0) {
+			chg_err("can't get GAUGE_ITEM_HMAC data, rc=%d\n",rc);
+			chip->hmac  = false;
+		} else {
+			chip->hmac  = !!data.intval;
+		}
+		chg_info("authenticate=%d, hmac=%d \n", chip->authenticate, chip->hmac);
+	}
+	if (!chip->authenticate || !chip->hmac) {
 		vote(chip->fcc_votable, NON_STANDARD_VOTER, true,
 		     spec->non_standard_ibatmax_ma, false);
 		chg_err("!authenticate or !hmac, set nonstandard current\n");
