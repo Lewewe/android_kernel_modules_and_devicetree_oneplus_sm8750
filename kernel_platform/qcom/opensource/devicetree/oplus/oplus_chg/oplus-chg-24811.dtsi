@@ -420,7 +420,6 @@
 					OPLUS_IC_FUNC_GAUGE_SET_LAST_CC
 					OPLUS_IC_FUNC_GAUGE_GET_LAST_CC
 					OPLUS_IC_FUNC_GAUGE_GET_CHEM_ID
-					OPLUS_IC_FUNC_GAUGE_GET_GAUGE_R_INFO
 				>;
 				virqs = <
 					OPLUS_IC_VIRQ_ERR
@@ -682,7 +681,6 @@
 		oplus_spec,current_limit_of_drop_soc_2 = <350>;
 		oplus_spec,volt_of_fast_drop_soc_1 = <2900>;
 		oplus_spec,support_uisoc_low_battery_control;
-		oplus_spec,support_gauge_r_track;
 
 		oplus_spec,vbat_uv_thr_mv = <3000>;
 		oplus_spec,vbat_charging_uv_thr_mv = <2900>;
@@ -705,8 +703,6 @@
 
 		oplus,ui_soc_2_voltage_comp_mv = <30>;
 		oplus,chg_shutdown_max_mv = <3000>;
-
-		oplus_spec,batt_full_time = <300>;
 	};
 
 	oplus_monitor: oplus,monitor {
@@ -1067,13 +1063,6 @@
 		oplus,bq28z610_afi_buf = /bits/ 8 <
 			/* checksum data_len data+ */
 			0xfd 0x04 0xf4 0x46 0xc8 0x00 /* Charge Term Taper Current 200mA */
-			0x24 0x03 0x90 0x45 0x06 /* MIN_RES_POINTS 6 */
-			0x24 0x03 0x91 0x45 0x05 /* RA_MAX_DELTA 5 */
-			0xd8 0x03 0xe8 0x45 0xfa /* SOH_LOAD_RATE 250 */
-			0x2 0x04 0x94 0x45 0x25 0xff /* RES_PARA_FILTER 65317 */
-			0x3d 0x04 0x96 0x45 0xed 0xfa /* RA_PARA_FILTER 64237 */
-			0xeb 0x03 0x89 0x45 0x46 /* MIN_DOD_RES 70 */
-			0x73 0x04 0x8e 0x45 0xb6 0x3 /* RA_PARA_FILTER 950 */
 			>;
 
 		oplus,ic_type = <OPLUS_CHG_IC_GAUGE>;
@@ -1702,7 +1691,6 @@
 		oplus,default_protocol_list = <CHG_PROTOCOL_UFCS
 					       CHG_PROTOCOL_PD
 					       CHG_PROTOCOL_VOOC>;
-		oplus,protocol_wait_list = <CHG_PROTOCOL_VOOC 1000>;
 	};
 
 	oplus_ufcs_virtual_cp: oplus,ufcs_virtual_cp {
