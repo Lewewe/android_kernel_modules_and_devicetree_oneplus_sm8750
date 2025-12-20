@@ -689,7 +689,13 @@ static int oplus_mt6375_guage_get_afi_update_done(struct oplus_chg_ic_dev *ic_de
 
 static int oplus_mt6375_guage_get_batt_hmac(struct oplus_chg_ic_dev *ic_dev, bool *pass)
 {
-	*pass = true;
+	if (g_gauge_chip &&
+	    g_gauge_chip->gauge_ops &&
+	    g_gauge_chip->gauge_ops->get_battery_hmac)
+		*pass = g_gauge_chip->gauge_ops->get_battery_hmac();
+	else
+		*pass = true;
+
 	chg_info("*pass = %d\n", *pass);
 	return 0;
 }

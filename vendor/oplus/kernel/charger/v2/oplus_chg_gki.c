@@ -665,13 +665,17 @@ static int battery_psy_get_prop(struct power_supply *psy,
 					pre_batt_status = 0;
 			}
 			if (is_chg_disable_votable_available(chip) && chip->wired_online &&
-				pval->intval == POWER_SUPPLY_STATUS_NOT_CHARGING &&
-				get_client_vote(chip->chg_disable_votable, EIS_VOTER) > 0 &&
-				get_effective_result_exclude_client(
-					chip->chg_disable_votable, EIS_VOTER) == 0) {
-				pval->intval = POWER_SUPPLY_STATUS_CHARGING;
-				chip->batt_status = POWER_SUPPLY_STATUS_CHARGING;
-				chg_info("EIS_VOTER: batt_status is %d\n", chip->batt_status);
+				pval->intval == POWER_SUPPLY_STATUS_NOT_CHARGING) {
+				if ((get_client_vote(chip->chg_disable_votable, EIS_VOTER) > 0 &&
+				    get_effective_result_exclude_client(
+						chip->chg_disable_votable, EIS_VOTER) == 0) ||
+				    (get_client_vote(chip->chg_disable_votable, FLASH_MODE_VOTER) > 0 &&
+				    get_effective_result_exclude_client(
+						chip->chg_disable_votable, FLASH_MODE_VOTER) == 0)) {
+					pval->intval = POWER_SUPPLY_STATUS_CHARGING;
+					chip->batt_status = POWER_SUPPLY_STATUS_CHARGING;
+					chg_info("EIS_VOTER or FLASH_MODE_VOTER: batt_status is %d\n", chip->batt_status);
+				}
 			}
 		}
 		chip->batt_status_keep = pval->intval;

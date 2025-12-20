@@ -89,10 +89,16 @@
 #define DEC_VOL_CC_THR_COUNT		3
 #define VBAT_COLD_WARM_COMP 		10
 #define DEC_VOL_CC_FULL_THR_COUNT	6
+#define FLASH_MODE_DELAY		10000
+#define FLASH_MODE_SAFETY_VOLTAGE	5400
+#define FLASH_MODE_SAFETY_VOLTAGE_DETECT_COUNT		25
+#define FLASH_MODE_SAFETY_VOLTAGE_QUERY_INTERVAL	40
 
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 17, 0))
 #define pde_data(inode) PDE_DATA(inode)
 #endif
+
+static struct oplus_chg_comm *g_comm_dev;
 
 static int oplus_dbg_tbat = 0;
 module_param(oplus_dbg_tbat, int, 0644);
@@ -337,6 +343,7 @@ struct oplus_chg_comm {
 	struct votable *wls_comu_votable;
 	struct votable *vooc_curr_votable;
 	struct votable *ufcs_curr_votable;
+	struct votable *flash_mode_votable;
 
 	struct thermal_zone_device *shell_themal;
 #if IS_ENABLED(CONFIG_DRM_PANEL_NOTIFY) || IS_ENABLED(CONFIG_OPLUS_CHG_DRM_PANEL_NOTIFY)
@@ -489,6 +496,8 @@ struct oplus_chg_comm {
 	struct delayed_work get_reserve_dec_cv_down_info_work;
 	struct delayed_work dec_vol_info_trigger_work;
 	struct work_struct set_reserve_dec_cv_down_info_work;
+	int flash_mode;
+	struct delayed_work flash_mode_boost_work;
 };
 
 typedef struct {
@@ -761,6 +770,14 @@ __maybe_unused static bool is_err_topic_available(struct oplus_chg_comm *chip)
 	if (!chip->err_topic)
 		chip->err_topic = oplus_mms_get_by_name("error");
 	return !!chip->err_topic;
+}
+
+__maybe_unused static bool
+is_flash_mode_votable_available(struct oplus_chg_comm *chip)
+{
+	if (!chip->flash_mode_votable)
+		chip->flash_mode_votable = find_votable("FLASH_MODE");
+	return !!chip->flash_mode_votable;
 }
 
 static bool is_wls_fastchg_started(struct oplus_chg_comm *chip)
@@ -6272,6 +6289,7 @@ static void oplus_comm_plugin_work(struct work_struct *work)
 		    oplus_comm_offline_clean_process(chip);
 		vote(chip->chg_suspend_votable, CHG_LIMIT_CHG_VOTER, false, 0, false);
 		vote(chip->chg_disable_votable, CHG_LIMIT_CHG_VOTER, false, 0, false);
+		vote(chip->chg_disable_votable, FLASH_MODE_VOTER, false, 0, false);
 		oplus_comm_check_fcc_gear(chip, true);
 	}
 	/* Ensure that the charging status is updated in a timely manner */
@@ -7043,6 +7061,25 @@ static void oplus_comm_update(struct oplus_mms *mms, bool publish)
 {
 }
 
+static int oplus_comm_wired_update_flash_mode(struct oplus_mms *mms, union mms_msg_data *data)
+{
+	struct oplus_chg_comm *chip;
+
+	if (mms == NULL) {
+		chg_err("mms is NULL");
+		return -EINVAL;
+	}
+	if (data == NULL) {
+		chg_err("data is NULL");
+		return -EINVAL;
+	}
+	chip = oplus_mms_get_drvdata(mms);
+
+	data->intval = chip->flash_mode;
+
+	return 0;
+}
+
 static struct mms_item oplus_comm_item[] = {
 	{
 		.desc = {
@@ -7374,6 +7411,16 @@ static struct mms_item oplus_comm_item[] = {
 	{
 		.desc = {
 			.item_id = COMM_ITEM_EIS_STATUS,
+		}
+	},
+	{
+		.desc = {
+			.item_id = COMM_ITEM_FLASH_MODE,
+			.str_data = false,
+			.up_thr_enable = false,
+			.down_thr_enable = false,
+			.dead_thr_enable = false,
+			.update = oplus_comm_wired_update_flash_mode,
 		}
 	}
 };
@@ -9756,6 +9803,69 @@ static void oplus_comm_parse_region_id_list(struct oplus_chg_comm *chip)
 #include "config/dynamic_cfg/oplus_comm_cfg.c"
 #endif
 
+static void oplus_set_flash_mode(struct oplus_chg_comm *chip, bool flash_mode)
+{
+	struct mms_msg *msg;
+	int rc;
+
+	msg = oplus_mms_alloc_msg(MSG_TYPE_ITEM, MSG_PRIO_HIGH, COMM_ITEM_FLASH_MODE);
+	if (msg == NULL) {
+		chg_err("alloc msg error\n");
+		return;
+	}
+	rc = oplus_mms_publish_msg_sync(chip->comm_topic, msg);
+	if (rc < 0) {
+		chg_err("publish flash mode msg error, rc=%d\n", rc);
+		kfree(msg);
+		return;
+	}
+}
+
+static void oplus_comm_flash_mode_boost_work(struct work_struct *work)
+{
+	struct delayed_work *dwork = to_delayed_work(work);
+	struct oplus_chg_comm *chip = container_of(dwork, struct oplus_chg_comm, flash_mode_boost_work);
+
+	chg_info("start boost\n");
+	vote(chip->chg_disable_votable, FLASH_MODE_VOTER, 0, 0, false);
+}
+
+void oplus_chg_set_camera_on(bool val)
+{
+	int count = FLASH_MODE_SAFETY_VOLTAGE_DETECT_COUNT;
+	int vbus_volt = 0;
+	struct oplus_chg_comm *chip = g_comm_dev;
+
+	if (!chip || !chip->wired_topic)
+		return;
+
+	chg_info("set flash mode to %s\n", val ? "true" : "false");
+
+	chip->flash_mode = val;
+	if (val) {
+		oplus_set_flash_mode(chip, val);
+		cancel_delayed_work_sync(&chip->flash_mode_boost_work);
+		vote(chip->chg_disable_votable, FLASH_MODE_VOTER, true, 1, false);
+		vbus_volt = oplus_wired_get_vbus();
+		chg_info("vbus_volt=%dmv\n", vbus_volt);
+		while (vbus_volt > FLASH_MODE_SAFETY_VOLTAGE && count > 0) {
+			msleep(FLASH_MODE_SAFETY_VOLTAGE_QUERY_INTERVAL);
+			vbus_volt = oplus_wired_get_vbus();
+			chg_info("vbus_volt=%dmv\n", vbus_volt);
+			count--;
+		}
+		if (is_flash_mode_votable_available(chip))
+			vote(chip->flash_mode_votable, FLASH_MODE_VOTER, true, 1, false);
+	} else {
+		if (is_flash_mode_votable_available(chip))
+			vote(chip->flash_mode_votable, FLASH_MODE_VOTER, false, 0, false);
+		oplus_set_flash_mode(chip, val);
+		schedule_delayed_work(&chip->flash_mode_boost_work, msecs_to_jiffies(FLASH_MODE_DELAY));
+	}
+	return;
+}
+EXPORT_SYMBOL(oplus_chg_set_camera_on);
+
 static int oplus_comm_driver_probe(struct platform_device *pdev)
 {
 	struct oplus_chg_comm *comm_dev;
@@ -9768,6 +9878,7 @@ static int oplus_comm_driver_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	}
 
+	g_comm_dev = comm_dev;
 	comm_dev->dev = &pdev->dev;
 	platform_set_drvdata(pdev, comm_dev);
 
@@ -9833,6 +9944,7 @@ static int oplus_comm_driver_probe(struct platform_device *pdev)
 	INIT_DELAYED_WORK(&comm_dev->lcd_notify_reg_work, oplus_comm_lcd_notify_reg_work);
 	INIT_DELAYED_WORK(&comm_dev->fg_soft_reset_work, oplus_fg_soft_reset_work);
 	INIT_DELAYED_WORK(&comm_dev->dec_vol_info_trigger_work, oplus_chg_track_dec_vol_info_trigger_work);
+	INIT_DELAYED_WORK(&comm_dev->flash_mode_boost_work, oplus_comm_flash_mode_boost_work);
 
 	spin_lock_init(&comm_dev->remuse_lock);
 	mutex_init(&comm_dev->decimal_lock);
@@ -9880,6 +9992,7 @@ vote_init_err:
 parse_dt_err:
 	platform_set_drvdata(pdev, NULL);
 	devm_kfree(&pdev->dev, comm_dev);
+	g_comm_dev = NULL;
 	return rc;
 }
 
@@ -9938,6 +10051,7 @@ static int oplus_comm_driver_remove(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, NULL);
 	devm_kfree(&pdev->dev, comm_dev);
+	g_comm_dev = NULL;
 	return 0;
 }
 

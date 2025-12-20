@@ -21,10 +21,8 @@
 #include <linux/regmap.h>
 #include <linux/regulator/consumer.h>
 #include <soc/oplus/device_info.h>
-#include <soc/oplus/system/boot_mode.h>
 #include <linux/iio/consumer.h>
-#include "charger_class.h"
-
+#include <oplus_chg_voter.h>
 #include <oplus_chg_module.h>
 #include <oplus_chg_ic.h>
 #include <oplus_mms.h>
@@ -32,6 +30,15 @@
 #include <oplus_chg_comm.h>
 #include <oplus_chg_cpa.h>
 #include "oplus_hal_sy6974b.h"
+
+#ifdef CONFIG_OPLUS_CHARGER_MTK
+#include <mtk_boot_common.h>
+#include "charger_class.h"
+#else
+#ifndef CONFIG_DISABLE_OPLUS_FUNCTION
+#include <soc/oplus/system/boot_mode.h>
+#endif
+#endif
 
 #ifndef I2C_ERR_MAX
 #define I2C_ERR_MAX 2
@@ -84,10 +91,7 @@
 #define INIT_WORK_OTHER_DELAY 			1000
 #define PRE_EVENT_WORK_DELAY_MS			2000
 #define PORT_PD_WITH_USB 			2
-
-#ifdef CONFIG_OPLUS_CHARGER_MTK
-#define META_BOOT				0
-#endif
+#define DISCONNECT_FCC_MAX_CURR			800
 
 static atomic_t i2c_err_count;
 
@@ -110,7 +114,6 @@ struct sy6974b_chip {
 	struct work_struct otg_enabled_work;
 	struct delayed_work event_work;
 
-	struct work_struct plugin_work;
 	struct delayed_work bc12_timeout_work;
 	struct oplus_mms *wired_topic;
 	struct oplus_mms *cpa_topic;
@@ -159,6 +162,8 @@ struct sy6974b_chip {
 	bool bc12_done;
 	char bc12_delay_cnt;
 	char bc12_retried;
+	struct votable *fcc_votable;
+	struct work_struct fcc_vote_work;
 };
 
 enum {
@@ -798,6 +803,47 @@ int sy6974b_input_current_limit_without_aicl(struct sy6974b_chip *chip, int curr
 	return rc;
 }
 
+static void sy6974b_fcc_vote_work(struct work_struct *work)
+{
+	struct sy6974b_chip *chip = container_of(work, struct sy6974b_chip, fcc_vote_work);
+	union mms_msg_data data = { 0 };
+	int max_curr = 0;
+	bool chg_online = 0;
+	int wire_type = 0;
+	int rc = 0;
+
+	if (IS_ERR_OR_NULL(chip->fcc_votable))
+		chip->fcc_votable = find_votable("WIRED_FCC");
+
+	if (chip->wired_topic) {
+		rc = oplus_mms_get_item_data(chip->wired_topic, WIRED_ITEM_CHG_TYPE, &data, false);
+		if (rc >= 0)
+			wire_type = data.intval;
+
+		rc = oplus_mms_get_item_data(chip->wired_topic, WIRED_ITEM_ONLINE, &data, false);
+		if (rc >= 0)
+			chg_online = !!data.intval;
+
+		if (chg_online == true) {
+			if (wire_type == OPLUS_CHG_USB_TYPE_PD_SDP) {
+				rc = oplus_mms_get_item_data(chip->wired_topic,
+					WIRED_ITEM_CHARGER_CURR_MAX, &data, false);
+				if (rc >= 0)
+					max_curr = data.intval;
+
+				if (max_curr > 0 && !IS_ERR_OR_NULL(chip->fcc_votable))
+					vote(chip->fcc_votable, IC_VOTER, true, max_curr, false);
+			} else {
+				if (!IS_ERR_OR_NULL(chip->fcc_votable))
+					vote(chip->fcc_votable, IC_VOTER, false, 0, false);
+			}
+		} else {
+			if (!IS_ERR_OR_NULL(chip->fcc_votable))
+				vote(chip->fcc_votable, IC_VOTER, true, DISCONNECT_FCC_MAX_CURR, false);
+		}
+	}
+}
+
 static void sy6974b_wired_subs_callback(struct mms_subscribe *subs,
 	enum mms_msg_type type, u32 id, bool sync)
 {
@@ -808,6 +854,10 @@ static void sy6974b_wired_subs_callback(struct mms_subscribe *subs,
 		switch (id) {
 		case WIRED_ITEM_OTG_ENABLE:
 			schedule_work(&chip->otg_enabled_work);
+			break;
+		case WIRED_ITEM_CHG_TYPE:
+		case WIRED_ITEM_ONLINE:
+			schedule_work(&chip->fcc_vote_work);
 			break;
 		default:
 			break;
@@ -2440,6 +2490,7 @@ static int sy6974b_driver_probe(struct i2c_client *client,
 	INIT_DELAYED_WORK(&chip->bc12_timeout_work, sy6974b_bc12_timeout_work);
 	INIT_DELAYED_WORK(&chip->bc12_retry_work, sy6974b_bc12_retry_work);
 	INIT_DELAYED_WORK(&chip->pre_event_work, sy6974b_pre_event_work);
+	INIT_WORK(&chip->fcc_vote_work, sy6974b_fcc_vote_work);
 
 	chip->dpdm_reg = devm_regulator_get_optional(chip->dev, "dpdm");
 	if (IS_ERR(chip->dpdm_reg)) {
@@ -2536,7 +2587,11 @@ static int sy6974b_driver_probe(struct i2c_client *client,
 	oplus_mms_wait_topic("wired", sy6974b_subscribe_wired_topic, chip);
 	oplus_mms_wait_topic("cpa", sy6974b_subscribe_cpa_topic, chip);
 
+#ifdef CONFIG_OPLUS_CHARGER_MTK
+	if (NORMAL_BOOT == get_boot_mode())
+#else
 	if (MSM_BOOT_MODE__NORMAL == get_boot_mode())
+#endif
 		schedule_delayed_work(&chip->event_work,
 			msecs_to_jiffies(chip->normal_init_delay_ms));
 	else

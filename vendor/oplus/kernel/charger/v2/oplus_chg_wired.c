@@ -65,6 +65,7 @@
 #define RETENTION_QC_WAIT_BC1P2_GET_TYPE 1000
 #define COMMON_POWER_CHECK_MIN_SOC	20
 #define COMMON_POWER_CHECK_RECOVERY_MSECS	600
+#define FLASH_MODE_BOOST_DELAY			10000
 
 struct oplus_wired_spec_config {
 	int32_t pd_iclmax_ma;
@@ -125,6 +126,7 @@ struct oplus_chg_wired {
 	struct work_struct qc_check_work;
 	struct work_struct pd_check_work;
 	struct work_struct sale_mode_buckboost_work;
+	struct work_struct flash_mode_buckboost_work;
 	struct delayed_work retention_disconnect_work;
 	struct delayed_work switch_end_recheck_work;
 	struct delayed_work pd_config_work;
@@ -143,6 +145,7 @@ struct oplus_chg_wired {
 	struct votable *vooc_disable_votable;
 	struct votable *pd_boost_disable_votable;
 	struct votable *vooc_chg_auto_mode_votable;
+	struct votable *chg_comm_disable_votable;
 
 	struct completion qc_action_ack;
 	struct completion pd_action_ack;
@@ -190,6 +193,7 @@ struct oplus_chg_wired {
 	unsigned int err_code;
 	struct mutex icl_lock;
 	struct mutex current_lock;
+	int flash_mode;
 
 #if IS_ENABLED(CONFIG_OPLUS_DYNAMIC_CONFIG_CHARGER)
 	struct oplus_cfg spec_debug_cfg;
@@ -277,6 +281,14 @@ is_vooc_chg_auto_mode_votable_available(struct oplus_chg_wired *chip)
 		chip->vooc_chg_auto_mode_votable =
 			find_votable("VOOC_CHG_AUTO_MODE");
 	return !!chip->vooc_chg_auto_mode_votable;
+}
+
+__maybe_unused static bool
+is_chg_comm_disable_votable_available(struct oplus_chg_wired *chip)
+{
+	if (!chip->chg_comm_disable_votable)
+		chip->chg_comm_disable_votable = find_votable("CHG_DISABLE");
+	return !!chip->chg_comm_disable_votable;
 }
 
 static const char *
@@ -735,6 +747,10 @@ static void oplus_wired_qc_config_work(struct work_struct *work)
 		chg_info("charger offline\n");
 		return;
 	}
+
+	if (chip->gauge_topic != NULL)
+		oplus_mms_topic_update(chip->gauge_topic, true);
+
 	rc = wait_for_completion_timeout(
 		&chip->qc_action_ack,
 		msecs_to_jiffies(PDQC_CONFIG_WAIT_TIME_MS));
@@ -983,6 +999,10 @@ static void oplus_wired_pd_config_work(struct work_struct *work)
 		chg_info("charger offline\n");
 		return;
 	}
+
+	if (chip->gauge_topic != NULL)
+		oplus_mms_topic_update(chip->gauge_topic, true);
+
 	rc = wait_for_completion_timeout(
 		&chip->pd_action_ack,
 		msecs_to_jiffies(PDQC_CONFIG_WAIT_TIME_MS));
@@ -1435,6 +1455,9 @@ static void oplus_wired_chg_type_change_work(struct work_struct *work)
 	switch (chip->chg_type) {
 	case OPLUS_CHG_USB_TYPE_QC2:
 	case OPLUS_CHG_USB_TYPE_QC3:
+		if (is_chg_comm_disable_votable_available(chip) &&
+		    get_client_vote(chip->chg_comm_disable_votable, FLASH_MODE_VOTER) > 0)
+			return;
 		chip->chg_mode = OPLUS_WIRED_CHG_MODE_QC;
 		chip->qc_action = OPLUS_ACTION_BOOST;
 		schedule_delayed_work(&chip->qc_config_work, 0);
@@ -1446,6 +1469,9 @@ static void oplus_wired_chg_type_change_work(struct work_struct *work)
 	case OPLUS_CHG_USB_TYPE_PD_PPS:
 		if (chip->cpa_support && chip->cpa_current_type != CHG_PROTOCOL_PD)
 			break;
+		if (is_chg_comm_disable_votable_available(chip) &&
+		    get_client_vote(chip->chg_comm_disable_votable, FLASH_MODE_VOTER) > 0)
+			return;
 		chip->chg_mode = OPLUS_WIRED_CHG_MODE_PD;
 		chip->pd_action = OPLUS_ACTION_BOOST;
 		schedule_delayed_work(&chip->pd_config_work, 0);
@@ -1746,6 +1772,38 @@ static void oplus_wired_sale_mode_buckboost_work(struct work_struct *work)
 	}
 }
 
+static void oplus_wired_flash_mode_buckboost_work(struct work_struct *work)
+{
+	struct oplus_chg_wired *chip =
+		container_of(work, struct oplus_chg_wired, flash_mode_buckboost_work);
+
+	switch (chip->chg_mode) {
+	case OPLUS_WIRED_CHG_MODE_QC:
+		cancel_delayed_work_sync(&chip->qc_config_work);
+		if (chip->flash_mode) {
+			chip->qc_action = OPLUS_ACTION_BUCK;
+			schedule_delayed_work(&chip->qc_config_work, 0);
+		} else {
+			chip->qc_action = OPLUS_ACTION_BOOST;
+			oplus_wired_qc_detect_enable(true);
+			schedule_delayed_work(&chip->qc_config_work, msecs_to_jiffies(FLASH_MODE_BOOST_DELAY));
+		}
+		break;
+	case OPLUS_WIRED_CHG_MODE_PD:
+		cancel_delayed_work_sync(&chip->pd_config_work);
+		if (chip->flash_mode) {
+			chip->pd_action = OPLUS_ACTION_BUCK;
+			schedule_delayed_work(&chip->pd_config_work, 0);
+		} else {
+			chip->pd_action = OPLUS_ACTION_BOOST;
+			schedule_delayed_work(&chip->pd_config_work, msecs_to_jiffies(FLASH_MODE_BOOST_DELAY));
+		}
+		break;
+	default:
+		break;
+	}
+}
+
 static void oplus_wired_comm_subs_callback(struct mms_subscribe *subs,
 					   enum mms_msg_type type, u32 id, bool sync)
 {
@@ -1837,6 +1895,12 @@ static void oplus_wired_comm_subs_callback(struct mms_subscribe *subs,
 						false);
 			chip->chg_ctrl_by_sale_mode = data.intval;
 			schedule_work(&chip->sale_mode_buckboost_work);
+			break;
+		case COMM_ITEM_FLASH_MODE:
+			oplus_mms_get_item_data(chip->comm_topic, id, &data, false);
+			chip->flash_mode = data.intval;
+			chg_info("set flash mode to %s\n", chip->flash_mode ? "true" : "false");
+			schedule_work(&chip->flash_mode_buckboost_work);
 			break;
 		default:
 			break;
@@ -2588,6 +2652,7 @@ static int oplus_wired_probe(struct platform_device *pdev)
 	INIT_WORK(&chip->qc_check_work, oplus_wired_qc_check_work);
 	INIT_WORK(&chip->pd_check_work, oplus_wired_pd_check_work);
 	INIT_WORK(&chip->sale_mode_buckboost_work, oplus_wired_sale_mode_buckboost_work);
+	INIT_WORK(&chip->flash_mode_buckboost_work, oplus_wired_flash_mode_buckboost_work);
 
 	chip->cpa_support = oplus_cpa_support();
 

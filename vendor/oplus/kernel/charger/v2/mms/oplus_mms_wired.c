@@ -175,6 +175,7 @@ struct oplus_mms_wired {
 	struct votable *vooc_curr_votable;
 	struct votable *ufcs_curr_votable;
 	struct votable *otg_disable_votable;
+	struct votable *flash_mode_votable;
 
 	struct delayed_work mms_wired_init_work;
 	struct delayed_work usbtemp_recover_work;
@@ -2349,8 +2350,6 @@ static int oplus_usbtemp_dischg_action(struct oplus_mms_wired *chip)
 	struct oplus_mms *vooc_topic;
 
 	vooc_topic = oplus_mms_get_by_name("vooc");
-	if (!vooc_topic)
-		return 0;
 #ifndef CONFIG_DISABLE_OPLUS_FUNCTION
 	if (get_eng_version() != HIGH_TEMP_AGING) {
 #endif
@@ -2362,7 +2361,7 @@ static int oplus_usbtemp_dischg_action(struct oplus_mms_wired *chip)
 			chg_err("can't open cc, rc=%d\n", rc);
 		usleep_range(5000, 5000);
 		/*TODO*/
-		if(chip->vooc_charging) {
+		if(chip->vooc_charging && vooc_topic) {
 			oplus_api_switch_normal_chg(vooc_topic);
 			oplus_api_vooc_set_reset_sleep(vooc_topic);
 		}
@@ -2378,7 +2377,7 @@ static int oplus_usbtemp_dischg_action(struct oplus_mms_wired *chip)
 		chg_err("set vbus down");
 		oplus_chg_ic_func(chip->buck_ic,
 				  OPLUS_IC_FUNC_SET_USB_DISCHG_ENABLE, true);
-		if(chip->vooc_charging)
+		if(chip->vooc_charging && vooc_topic)
 			oplus_api_vooc_turn_off_fastchg(vooc_topic);
 #ifndef CONFIG_DISABLE_OPLUS_FUNCTION
 	} else {
@@ -6152,7 +6151,7 @@ static int oplus_wired_otg_disable_vote_callback(struct votable *votable,
 		chip->otg_disbale_status = false;
 	else
 		chip->otg_disbale_status = !!disable;
-	chg_info("otg_disable vote clent %s, status = %d\n", client, disable);
+	chg_info("otg_disable vote client %s, status = %d\n", client, disable);
 
 
 	rc = oplus_chg_ic_func(chip->buck_ic,
@@ -6165,6 +6164,27 @@ static int oplus_wired_otg_disable_vote_callback(struct votable *votable,
 		schedule_work(&chip->data_role_changed_handler_work);
 	}
 
+	return rc;
+}
+
+static int oplus_wired_flash_mode_vote_callback(struct votable *votable,
+						 void *data, int enter,
+						 const char *client,
+						 bool step)
+{
+	bool enable;
+	int rc;
+	struct oplus_mms_wired *chip = data;
+
+	if (enter < 0)
+		enable = false;
+	else
+		enable = !!enter;
+
+	chg_info("flash_mode vote client %s, enter = %d\n", client, enter);
+	rc = oplus_chg_ic_func(chip->buck_ic, OPLUS_IC_FUNC_BUCK_SET_FLASH_MODE, enable);
+	if (rc < 0 && rc != -ENOTSUPP)
+		chg_err("can't enter flash mode, rc=%d\n", rc);
 	return rc;
 }
 
@@ -6183,27 +6203,22 @@ static int oplus_mms_wired_votable_init(struct oplus_mms_wired *chip)
 	}
 	vote(chip->otg_disable_votable, DEF_VOTER, false, false, false);
 
-	return 0;
-}
-
-void oplus_chg_set_camera_on(bool val)
-{
-	int rc;
-	struct oplus_mms_wired *chip = g_mms_wired;
-
-	if (!chip || !chip->buck_ic)
-		return;
-
-	chg_info("set flash mode to %s\n", val ? "true" : "false");
-
-	rc = oplus_chg_ic_func(chip->buck_ic, OPLUS_IC_FUNC_BUCK_SET_FLASH_MODE, val);
-	if (rc < 0) {
-		chg_err("can't set flash mode, rc=%d\n", rc);
-		return;
+	chip->flash_mode_votable =
+		create_votable("FLASH_MODE", VOTE_SET_ANY,
+			       oplus_wired_flash_mode_vote_callback, chip);
+	if (IS_ERR(chip->flash_mode_votable)) {
+		rc = PTR_ERR(chip->flash_mode_votable);
+		chg_err("flash_mode_votable create error, rc=%d\n", rc);
+		chip->flash_mode_votable = NULL;
+		goto creat_flash_mode_votable_err;
 	}
-	return;
+
+	return 0;
+
+creat_flash_mode_votable_err:
+	destroy_votable(chip->otg_disable_votable);
+	return rc;
 }
-EXPORT_SYMBOL(oplus_chg_set_camera_on);
 
 static int oplus_mms_wired_probe(struct platform_device *pdev)
 {
@@ -6297,6 +6312,8 @@ static int oplus_mms_wired_remove(struct platform_device *pdev)
 
 	if (!IS_ERR_OR_NULL(chip->gauge_subs))
 		oplus_mms_unsubscribe(chip->gauge_subs);
+	if (chip->flash_mode_votable != NULL)
+		destroy_votable(chip->flash_mode_votable);
 	if (chip->otg_disable_votable != NULL)
 		destroy_votable(chip->otg_disable_votable);
 	devm_kfree(&pdev->dev, chip);

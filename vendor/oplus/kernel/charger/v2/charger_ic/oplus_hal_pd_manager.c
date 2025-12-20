@@ -696,6 +696,9 @@ static int pd_tcp_notifier_call(struct notifier_block *nb, unsigned long event,
 	bool hard_reset;
 	bool first_boot = false;
 
+	if (IS_ERR_OR_NULL(chip) || IS_ERR_OR_NULL(chip->ic_dev))
+		return NOTIFY_OK;
+
 	switch (event) {
 	case TCP_NOTIFY_SINK_VBUS:
 		chip->sink_mv_new = noti->vbus_state.mv;
@@ -995,6 +998,11 @@ static int pd_tcp_notifier_call(struct notifier_block *nb, unsigned long event,
 		}
 		/* smblib_set_prop(chip, POWER_SUPPLY_PROP_PD_IN_HARD_RESET, &val); */
 		break;
+#if defined(CONFIG_OPLUS_CHARGER_MTK) || IS_ENABLED(CONFIG_OPLUS_PD_EXT_SUPPORT)
+	case TCP_NOTIFY_WD0_STATE:
+		oplus_chg_ic_virq_trigger(chip->ic_dev, OPLUS_IC_VIRQ_CC_DETECT);
+		break;
+#endif
 	default:
 		break;
 	}
@@ -1890,6 +1898,7 @@ static void *oplus_chg_get_func(struct oplus_chg_ic_dev *ic_dev,
 struct oplus_chg_ic_virq pd_manager_virq_table[] = {
 	{ .virq_id = OPLUS_IC_VIRQ_ERR },
 	{ .virq_id = OPLUS_IC_VIRQ_CHG_TYPE_CHANGE },
+	{ .virq_id = OPLUS_IC_VIRQ_CC_DETECT },
 	{ .virq_id = OPLUS_IC_VIRQ_SVID },
 	{ .virq_id = OPLUS_IC_VIRQ_VOLTAGE_CHANGED },
 	{ .virq_id = OPLUS_IC_VIRQ_CURRENT_CHANGED },

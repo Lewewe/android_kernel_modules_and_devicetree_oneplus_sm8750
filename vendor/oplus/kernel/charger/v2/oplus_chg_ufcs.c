@@ -4388,10 +4388,6 @@ static void oplus_ufcs_monitor_work(struct work_struct *work)
 			switch_to_ffc = true;
 			goto exit;
 		}
-		if (chip->ufcs_not_allow || chip->ufcs_disable) {
-			chg_info("ufcs charge not allow or disable, exit ufcs mode\n");
-			goto exit;
-		}
 		vote(chip->ufcs_curr_votable, STEP_VOTER, true, data.target_ibus, false);
 		oplus_ufcs_set_soc_current(chip);
 
@@ -4399,6 +4395,11 @@ static void oplus_ufcs_monitor_work(struct work_struct *work)
 		    && chip->need_preliminary_imp_check) {
 			delay = UFCS_PRELIMINARY_IMP_TIME_MS;
 		}
+	}
+
+	if (chip->ufcs_not_allow || chip->ufcs_disable) {
+		chg_info("ufcs charge not allow or disable, exit ufcs mode\n");
+		goto exit;
 	}
 
 	if (chip->wired_online)

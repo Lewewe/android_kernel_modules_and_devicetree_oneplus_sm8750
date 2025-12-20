@@ -377,9 +377,14 @@ bool oplus_chglib_is_switch_temp_range(void)
 	return enabled;
 }
 
-bool oplus_chglib_get_flash_led_status(void)
+bool oplus_chglib_get_flash_led_status(struct device *dev)
 {
-	return false;
+	struct vphy_chip *chip = oplus_chglib_get_vphy_chip(dev);
+
+	if (chip == NULL)
+		return false;
+	else
+		return chip->flash_mode;
 }
 
 int oplus_chglib_get_battery_btb_temp_cal(void)
@@ -804,6 +809,11 @@ static void oplus_chglib_common_subs_callback(struct mms_subscribe *subs,
 				chip->eis_status = data.intval;
 			else
 				chip->eis_status = EIS_STATUS_DISABLE;
+			break;
+		case COMM_ITEM_FLASH_MODE:
+			oplus_mms_get_item_data(chip->common_topic, id, &data, false);
+			chip->flash_mode = data.intval;
+			chg_info("set flash mode to %s\n", chip->flash_mode ? "true" : "false");
 			break;
 		default:
 			break;

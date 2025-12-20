@@ -3684,20 +3684,13 @@ static int oplus_voocphy_svooc_commu_with_voocphy(struct oplus_voocphy_manager *
 	oplus_voocphy_adapter_commu_with_voocphy(chip);
 
 	if (oplus_voocphy_ap_allow_fastchg(chip)) {
-		if (chip->fastchg_stage == OPLUS_FASTCHG_STAGE_2 && oplus_chglib_get_flash_led_status()) {
-			chip->fastchg_need_reset = 1;
-			voocphy_info("OPLUS_FASTCHG_STAGE_2 and open torch exit fastchg\n");
-			return 1;
+		if (oplus_chglib_get_eis_status(chip->dev) == EIS_STATUS_HIGH_CURRENT) {
+			chip->eis_status = EIS_STATUS_HIGH_CURRENT;
+			voocphy_info("<EIS>in EIS status\n");
 		} else {
-			if (oplus_chglib_get_eis_status(chip->dev) == EIS_STATUS_HIGH_CURRENT) {
-				chip->eis_status = EIS_STATUS_HIGH_CURRENT;
-				voocphy_info("<EIS>in EIS status\n");
-			} else {
-				oplus_chglib_suspend_charger(true);
-				voocphy_info("allow fastchg adapter type %d\n", chip->adapter_type);
-			}
+			oplus_chglib_suspend_charger(true);
+			voocphy_info("allow fastchg adapter type %d\n", chip->adapter_type);
 		}
-
 		/* handle timeout of adapter ask cmd 0x4 */
 		oplus_voocphy_set_is_vbus_ok_predata(chip);
 		if (chip->adapter_type == ADAPTER_SVOOC) {
@@ -3903,10 +3896,10 @@ irqreturn_t oplus_voocphy_interrupt_handler(struct oplus_voocphy_manager *chip)
 	calltime = ktime_get();
 
 	/* for flash led */
-	if (chip->fastchg_need_reset) {
+	if (oplus_chglib_get_flash_led_status(chip->dev)) {
 		voocphy_info("fastchg_need_reset\n");
 		chip->fastchg_need_reset = 0;
-		oplus_voocphy_set_status_and_notify_ap(chip, FAST_NOTIFY_USER_EXIT_FASTCHG);
+		oplus_chglib_notify_ap(chip->dev, FAST_NOTIFY_ONGOING);
 		goto handle_done;
 	}
 

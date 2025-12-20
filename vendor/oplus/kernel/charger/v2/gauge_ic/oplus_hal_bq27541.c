@@ -7314,6 +7314,9 @@ static void register_gauge_devinfo(struct chip_bq27541 *chip)
 		if(chip->batt_zy0603) {
 			version = "zy0603";
 			manufacture = "ZY";
+		} else if (chip->batt_nfg8011b) {
+			version = "nfg8011b";
+			manufacture = "HX";
 		} else {
 			version = "bq27541";
 			manufacture = "TI";

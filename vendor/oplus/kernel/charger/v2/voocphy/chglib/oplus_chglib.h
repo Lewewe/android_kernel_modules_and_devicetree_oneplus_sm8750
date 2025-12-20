@@ -103,6 +103,7 @@ struct vphy_chip {
 	int track_err_type;
 	int cc_detect;
 	int eis_status;
+	int flash_mode;
 };
 
 extern void oplus_chg_adc_switch_ctrl(void);
@@ -131,7 +132,7 @@ bool oplus_chglib_is_switch_temp_range(void);
 int oplus_chglib_get_battery_btb_temp_cal(void);
 int oplus_chglib_get_usb_btb_temp_cal(void);
 bool oplus_chglib_get_chg_stats(void);
-bool oplus_chglib_get_flash_led_status(void);
+bool oplus_chglib_get_flash_led_status(struct device *dev);
 int oplus_chglib_get_charger_voltage(void);
 bool oplus_chglib_get_vooc_is_started(struct device *dev);
 bool oplus_chglib_get_vooc_sid_is_config(struct device *dev);

@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2002,2007-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 #ifndef __KGSL_DEVICE_H
 #define __KGSL_DEVICE_H
@@ -170,6 +170,8 @@ struct kgsl_functable {
 	void (*set_isdb_breakpoint_registers)(struct kgsl_device *device);
 	/** @create_hw_fence: Create a hardware fence */
 	void (*create_hw_fence)(struct kgsl_device *device, struct kgsl_sync_fence *kfence);
+	/** @is_reset_recovery: Check if the ADRENO device under goes reset recovery */
+	bool (*is_reset_recovery)(struct kgsl_device *device);
 };
 
 struct kgsl_ioctl {

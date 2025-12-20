@@ -3524,10 +3524,6 @@ static void oplus_pps_monitor_work(struct work_struct *work)
 			chip->quit_pps_protocol = true;
 			goto exit;
 		}
-		if (chip->pps_not_allow || chip->pps_disable) {
-			chg_info("pps charge not allow or disable, exit pps mode\n");
-			goto exit;
-		}
 
 		if (chip->oplus_pps_adapter) {
 			chip->target_vbus_mv = data.target_vbus;
@@ -3546,6 +3542,12 @@ static void oplus_pps_monitor_work(struct work_struct *work)
 		oplus_pps_push_err_info(chip, chip->debug_force_pps_err, 0);
 		chip->debug_force_pps_err = 0;
 	}
+
+	if (chip->pps_not_allow || chip->pps_disable) {
+		chg_info("pps charge not allow or disable, exit pps mode\n");
+		goto exit;
+	}
+
 	if (chip->wired_online)
 		schedule_delayed_work(&chip->monitor_work, msecs_to_jiffies(delay));
 	return;
