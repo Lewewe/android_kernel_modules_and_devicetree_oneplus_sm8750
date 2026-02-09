@@ -98,6 +98,8 @@ struct oplus_backlight_config {
 	bool global_hbm_scale_mapping;
 	bool oplus_limit_max_bl_mode;
 	u32 oplus_limit_max_bl;
+	bool oplus_limit_min_bl_mode;
+	u32 oplus_limit_min_bl;
 	bool oplus_demura2_offset_support;
 	bool need_to_set_demura2_offset;
 	u32 demura2_offset;
@@ -316,6 +318,8 @@ struct oplus_panel {
 	bool ofp_configuration_enable_for_ili7838e;
 
 	bool doze_disable_esdcheck;
+	/* add for aod mode cmd switch */
+	bool ramless_aod_mode_cmd_switch_support;
 };
 
 #endif /* _OPLUS_PANEL_H_ */
