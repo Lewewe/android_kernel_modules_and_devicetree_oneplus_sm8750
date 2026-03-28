@@ -87,6 +87,28 @@ static void android_rvh_create_worker_handler(void *unused,
 	}
 }
 
+static void android_vh_f2fs_restore_priority_handler(void *unused, struct task_struct *is_issue_ckpt, int saved_prio)
+{
+	if (oplus_get_ux_state(is_issue_ckpt)) {
+		oplus_set_ux_state_lock(is_issue_ckpt, 0, -1, false);
+		is_issue_ckpt->static_prio = saved_prio;
+	}
+	return;
+}
+
+static void android_vh_f2fs_improve_priority_handler(void *unused, struct task_struct *is_issue_ckpt, int *saved_prio,
+	                                                bool *prio_changed)
+{
+	if (oplus_get_ux_state(current)) {
+		*saved_prio = is_issue_ckpt->static_prio;
+		oplus_set_ux_state_lock(is_issue_ckpt, SA_TYPE_LIGHT, -1, true);
+		*prio_changed = true;
+	} else {
+		*prio_changed = false;
+	}
+	return;
+}
+
 static void android_vh_blk_mq_kick_requeue_list_handler(void *unused,
 	struct request_queue *q, unsigned long delay, bool *skip)
 {
@@ -131,6 +153,14 @@ static struct tracepoints_table interests[] = {
 	{
 		.name = "android_vh_blk_mq_kick_requeue_list",
 		.func = android_vh_blk_mq_kick_requeue_list_handler
+	},
+	{
+		.name = "android_vh_f2fs_improve_priority",
+		.func = android_vh_f2fs_improve_priority_handler
+	},
+	{
+		.name = "android_vh_f2fs_restore_priority",
+		.func = android_vh_f2fs_restore_priority_handler
 	},
 };
 
@@ -236,7 +266,7 @@ static int __init oplus_wq_hook_init(void)
 		goto err_free_fsverify_wq;
 	}
 
-	err = wq_install_tracepoints(3, 4);
+	err = wq_install_tracepoints(3, 6);
 	if (err) {
 		goto err_end_wq_uninstall;
 	}
