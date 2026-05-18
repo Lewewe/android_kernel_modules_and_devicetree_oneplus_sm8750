@@ -55,6 +55,10 @@
 #define SMART_GESTURE_THRESHOLD 0x0A
 #define SMART_GESTURE_LOW_VALUE 0x05
 
+#define FP_GRIP_ENABLE           1
+#define FP_GRIP_DISABLE_TIMEOUT  2
+#define FP_GRIP_DISABLE          0
+
 /* bit operation */
 #define SET_BIT(data, flag) ((data) |= (flag))
 #define CLR_BIT(data, flag) ((data) &= ~(flag))
@@ -387,8 +391,7 @@ extern int hbp_register_devices(void *priv,
 extern int hbp_unregister_devices(void *priv);
 extern bool match_from_cmdline(struct device *dev, struct chip_info *info);
 extern void hbp_set_irq_wake(struct hbp_device *hbp_dev, bool wake);
-extern void hbp_dev_ctrl_power_reconfig(void);
-extern void hbp_dev_ctrl_hw_reset(void);
+extern void hbp_dev_power_type_ctrl(void *priv, enum power_type type, bool en);
 extern void hbp_dev_healthinfo_report(void *priv, char *report);
 /*
 #if 1
