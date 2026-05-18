@@ -123,6 +123,15 @@ def define_oplus_local_modules():
     )
 
     define_oplus_ddk_module(
+        name = "oplus_bsp_abort_mm_opt",
+        srcs = native.glob([
+            "**/*.h",
+            "async_reclaim_opt/abort_mm_opt/abort_mm_opt.c",
+        ]),
+        includes = ["."],
+    )
+
+    define_oplus_ddk_module(
         name = "oplus_bsp_uxmem_opt",
         srcs = native.glob([
             "**/*.h",
@@ -174,6 +183,16 @@ def define_oplus_local_modules():
             "//build/kernel/kleaf:kocov_is_true": ["-fprofile-arcs", "-ftest-coverage"],
             "//conditions:default": [],
         }),
+    )
+
+    define_oplus_ddk_module(
+        name = "oplus_bsp_file_read_record",
+        srcs = native.glob([
+            "**/*.h",
+            "file_read_record/file_read_record.c",
+        ]),
+        includes = ["."],
+        # local_defines = ["CONFIG_OPLUS_MM_FRR_DEBUG"],
     )
 
     define_oplus_ddk_module(
@@ -302,8 +321,10 @@ def define_oplus_local_modules():
             "oplus_bsp_proactive_compact",
             "oplus_bsp_hybridswap_zram",
             "oplus_bsp_zsmalloc",
+            "oplus_bsp_file_read_record",
 #            "oplus_bsp_lz4k",
             "oplus_bsp_kshrink_slabd",
+            "oplus_bsp_abort_mm_opt",
             "oplus_bsp_uxmem_opt",
             "oplus_bsp_dynamic_readahead",
             "oplus_bsp_pcppages_opt",

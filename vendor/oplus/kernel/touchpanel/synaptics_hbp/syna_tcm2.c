@@ -1238,7 +1238,7 @@ static void syna_get_diff_data_record(struct syna_tcm *tcm)
 		return;
 	}
 
-	if (!tcm->differ_read_every_frame || tp_hbp_debug == 0) {
+	if (!tcm->differ_read_every_frame || (tp_hbp_debug != LEVEL_DEBUG && tp_hbp_debug != LEVEL_DEBUG_SC_OFF)) {
 		LOGD("differ_read_every_frame is false or debug_level < 2\n");
 		return;
 	}
@@ -3573,7 +3573,6 @@ static int syna_dev_probe(struct platform_device *pdev)
 			LOGI("Success to get panel info\n");
 			break;
 		}
-		msleep(20);
 	}
 
 	if (retry == 10) {

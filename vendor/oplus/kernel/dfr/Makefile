@@ -32,16 +32,6 @@ obj-$(CONFIG_OPLUS_FEATURE_FULLDUMP_BACK) += qcom/oplus_ordump/
 #endif /* OPLUS_FEATURE_FULLDUMP_BACK */
 
 
-# MTK platform feature
-
-#ifdef OPLUS_FEATURE_MTK_FORCE_SHUTDOWN
-obj-$(CONFIG_OPLUS_FEATURE_MTK_FORCE_SHUTDOWN)	+=  mtk/mtk_shutdown_reboot/
-#endif /* OPLUS_FEATURE_MTK_FORCE_SHUTDOWN */
-
-#ifdef OPLUS_FEATURE_PMIC_MONITOR_MTK
-obj-$(CONFIG_OPLUS_FEATURE_PMIC_MONITOR_MTK)	+=  mtk/oplus_pmic_monitor_mtk/
-#endif /* OPLUS_FEATURE_PMIC_MONITOR_MTK */
-
 # common feature
 #ifdef OPLUS_FEATURE_SHUTDOWN_DETECT
 obj-$(CONFIG_OPLUS_FEATURE_SHUTDOWN_DETECT) += common/shutdown_detect/
@@ -86,3 +76,7 @@ obj-$(CONFIG_OPLUS_BSP_DFR_USERSPACE_BACKTRACE)     += common/oplus_bsp_dfr_ubt/
 #ifdef OPLUS_FEATURE_LAST_BOOT_REASON
 obj-$(CONFIG_OPLUS_FEATURE_LAST_BOOT_REASON) += common/last_boot_reason/
 #endif /*OPLUS_FEATURE_LAST_BOOT_REASON*/
+
+#ifdef CONFIG_OPLUS_FEATURE_KP_FREEZE_DETECT
+obj-$(CONFIG_OPLUS_FEATURE_KP_FREEZE_DETECT)     += common/kp_freeze_detect/
+#endif /* CONFIG_OPLUS_FEATURE_KP_FREEZE_DETECT */
