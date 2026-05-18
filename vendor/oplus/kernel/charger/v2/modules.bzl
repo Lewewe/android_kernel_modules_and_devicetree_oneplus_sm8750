@@ -283,6 +283,11 @@ def define_oplus_chg_v2_module():
                 "v2/gauge_ic/oplus_hal_mpc7022.c"
             ],
         },
+        "CONFIG_OPLUS_GAUGE_SH366002": {
+            True: [
+                "v2/gauge_ic/oplus_hal_sh366002.c"
+            ],
+        },
         "CONFIG_OPLUS_GAUGE_BQ27Z561": {
             True: [
                 "v2/gauge_ic/oplus_hal_bq27z561.c"

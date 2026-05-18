@@ -89,16 +89,19 @@ static void android_rvh_create_worker_handler(void *unused,
 
 static void android_vh_f2fs_restore_priority_handler(void *unused, struct task_struct *is_issue_ckpt, int saved_prio)
 {
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_SCHED_ASSIST)
 	if (oplus_get_ux_state(is_issue_ckpt)) {
-		oplus_set_ux_state_lock(is_issue_ckpt, 0, -1, false);
+		oplus_set_ux_state_lock(is_issue_ckpt, 0, -1, true);
 		is_issue_ckpt->static_prio = saved_prio;
 	}
 	return;
+#endif
 }
 
 static void android_vh_f2fs_improve_priority_handler(void *unused, struct task_struct *is_issue_ckpt, int *saved_prio,
 	                                                bool *prio_changed)
 {
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_SCHED_ASSIST)
 	if (oplus_get_ux_state(current)) {
 		*saved_prio = is_issue_ckpt->static_prio;
 		oplus_set_ux_state_lock(is_issue_ckpt, SA_TYPE_LIGHT, -1, true);
@@ -107,6 +110,7 @@ static void android_vh_f2fs_improve_priority_handler(void *unused, struct task_s
 		*prio_changed = false;
 	}
 	return;
+#endif
 }
 
 static void android_vh_blk_mq_kick_requeue_list_handler(void *unused,
