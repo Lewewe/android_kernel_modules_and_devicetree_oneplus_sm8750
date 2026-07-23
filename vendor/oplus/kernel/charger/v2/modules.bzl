@@ -256,6 +256,7 @@ def define_oplus_chg_v2_module():
         "v2/strategy/oplus_strategy_pps_ufcs_curve.c",
         "v2/strategy/oplus_strategy_low_curr_full.c",
         "v2/strategy/oplus_strategy_pps_ufcs_curve_v2.c",
+        "v2/strategy/oplus_strategy_cycle_current_derating.c",
         "v2/strategy/oplus_strategy_ddrc.c",
         "v2/strategy/oplus_strategy_ddrc_v2.c",
         "v2/strategy/oplus_strategy_battery_smooth.c",
